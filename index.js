@@ -19,6 +19,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
 const CLIENTS_FILE = path.join(DATA_DIR, 'clients.json');
 const SALES_FILE = path.join(DATA_DIR, 'sales.json');
+const COMPANY_FILE = path.join(DATA_DIR, 'company.json');
 
 // ================= HELPERS =================
 const loadData = (file, defaultData) => {
@@ -50,6 +51,15 @@ if (!Array.isArray(clients)) clients = [];
 
 let sales = loadData(SALES_FILE, []);
 if (!Array.isArray(sales)) sales = [];
+
+// Dados da empresa
+let company = loadData(COMPANY_FILE, {
+  name: 'Minha Empresa',
+  whatsapp: '(00) 00000-0000',
+  phone: '(00) 0000-0000',
+  cnpj: 'CNPJ: 00.000.000/0000-00',
+  address: 'Endereço da empresa',
+});
 
 // ================= AUTH =================
 function auth(req, res, next) {
@@ -91,35 +101,15 @@ app.get('/me', auth, (req, res) => {
 });
 
 // ================= PRODUTOS =================
-
-app.get('/products', auth, (req, res) => {
-  res.json(products);
-});
-
+app.get('/products', auth, (req, res) => res.json(products));
 app.get('/products/:id', auth, (req, res) => {
   const product = products.find(p => p.id === Number(req.params.id));
   if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
   res.json(product);
 });
-
 app.post('/products', auth, (req, res) => {
-  const {
-    sku,
-    barcode,
-    description,
-    category,
-    brand,
-    costPrice,
-    salePrice,
-    stock,
-    minStock,
-    unit,
-    active
-  } = req.body;
-
-  if (!description || salePrice == null) {
-    return res.status(400).json({ error: 'Descrição e preço de venda são obrigatórios' });
-  }
+  const { sku, barcode, description, category, brand, costPrice, salePrice, stock, minStock, unit, active } = req.body;
+  if (!description || salePrice == null) return res.status(400).json({ error: 'Descrição e preço de venda são obrigatórios' });
 
   const newProduct = {
     id: products.length ? Math.max(...products.map(p => p.id)) + 1 : 1,
@@ -148,19 +138,7 @@ app.put('/products/:id', auth, (req, res) => {
   const product = products.find(p => p.id === Number(req.params.id));
   if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
 
-  const {
-    sku,
-    barcode,
-    description,
-    category,
-    brand,
-    costPrice,
-    salePrice,
-    stock,
-    minStock,
-    unit,
-    active
-  } = req.body;
+  const { sku, barcode, description, category, brand, costPrice, salePrice, stock, minStock, unit, active } = req.body;
 
   if (sku !== undefined) product.sku = sku;
   if (barcode !== undefined) product.barcode = barcode;
@@ -183,16 +161,13 @@ app.put('/products/:id', auth, (req, res) => {
 app.delete('/products/:id', auth, (req, res) => {
   const index = products.findIndex(p => p.id === Number(req.params.id));
   if (index === -1) return res.status(404).json({ error: 'Produto não encontrado' });
-
   const removed = products.splice(index, 1)[0];
   saveData(PRODUCTS_FILE, products);
-
   res.json(removed);
 });
 
 // ================= CLIENTES =================
 app.get('/clients', auth, (req, res) => res.json(clients));
-
 app.post('/clients', auth, (req, res) => {
   const { name, email, phone } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome é obrigatório' });
@@ -210,9 +185,29 @@ app.post('/clients', auth, (req, res) => {
   res.status(201).json(newClient);
 });
 
+app.put('/clients/:id', auth, (req, res) => {
+  const client = clients.find(c => c.id === Number(req.params.id));
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+  const { name, email, phone } = req.body;
+  if (name !== undefined) client.name = name;
+  if (email !== undefined) client.email = email;
+  if (phone !== undefined) client.phone = phone;
+
+  saveData(CLIENTS_FILE, clients);
+  res.json(client);
+});
+
+app.delete('/clients/:id', auth, (req, res) => {
+  const index = clients.findIndex(c => c.id === Number(req.params.id));
+  if (index === -1) return res.status(404).json({ error: 'Cliente não encontrado' });
+  const removed = clients.splice(index, 1)[0];
+  saveData(CLIENTS_FILE, clients);
+  res.json(removed);
+});
+
 // ================= VENDAS =================
 app.get('/sales', auth, (req, res) => res.json(sales));
-
 app.get('/sales/:id', auth, (req, res) => {
   const sale = sales.find(s => s.id === Number(req.params.id));
   if (!sale) return res.status(404).json({ error: 'Venda não encontrada' });
@@ -231,14 +226,8 @@ app.post('/sales', auth, (req, res) => {
 
   for (const item of items) {
     const product = products.find(p => p.id === item.productId);
-
-    if (!product) {
-      return res.status(404).json({ error: 'Produto não encontrado' });
-    }
-
-    if (product.stock < item.quantity) {
-      return res.status(400).json({ error: `Estoque insuficiente: ${product.description}` });
-    }
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado' });
+    if (product.stock < item.quantity) return res.status(400).json({ error: `Estoque insuficiente: ${product.description}` });
 
     const unitPrice = Number(product.salePrice || 0);
     const lineTotal = unitPrice * item.quantity;
@@ -270,12 +259,29 @@ app.post('/sales', auth, (req, res) => {
   };
 
   sales.push(sale);
-
   saveData(PRODUCTS_FILE, products);
   saveData(SALES_FILE, sales);
 
   res.status(201).json(sale);
 });
+
+// ================= EMPRESA =================
+app.get('/company', auth, (req, res) => res.json(company));
+
+app.put('/company', auth, (req, res) => {
+  const { name, whatsapp, phone, cnpj, address } = req.body;
+
+  if (name !== undefined) company.name = name;
+  if (whatsapp !== undefined) company.whatsapp = whatsapp;
+  if (phone !== undefined) company.phone = phone;
+  if (cnpj !== undefined) company.cnpj = cnpj;
+  if (address !== undefined) company.address = address;
+
+  fs.writeFileSync(COMPANY_FILE, JSON.stringify(company, null, 2));
+
+  res.json(company);
+});
+
 
 // ================= START =================
 app.listen(PORT, HOST, () => {
