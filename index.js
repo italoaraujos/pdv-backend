@@ -20,6 +20,7 @@ const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
 const CLIENTS_FILE = path.join(DATA_DIR, 'clients.json');
 const SALES_FILE = path.join(DATA_DIR, 'sales.json');
 const COMPANY_FILE = path.join(DATA_DIR, 'company.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 // ================= HELPERS =================
 const loadData = (file, defaultData) => {
@@ -39,9 +40,10 @@ const saveData = (file, data) => {
 };
 
 // ================= DATA =================
-let users = [
+let users = loadData(USERS_FILE, [
   { id: 1, name: 'Administrador', email: 'admin@pdv.com', password: '123456', role: 'admin' },
-];
+]);
+
 
 let products = loadData(PRODUCTS_FILE, []);
 if (!Array.isArray(products)) products = [];
@@ -96,6 +98,85 @@ app.post('/login', (req, res) => {
 app.get('/me', auth, (req, res) => {
   const user = users.find(u => u.id === req.user.id);
   if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+// ================= USUÁRIOS =================
+
+// Listar usuários
+app.get('/users', auth, (req, res) => {
+  res.json(users.map(u => ({ ...u, password: undefined })));
+});
+
+// Criar usuário
+app.post('/users', auth, (req, res) => {
+  const { name, email, password, role } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: "Nome, email e senha são obrigatórios" });
+  }
+
+  const exists = users.find(u => u.email === email);
+  if (exists) {
+    return res.status(400).json({ error: "Email já cadastrado" });
+  }
+
+  const newUser = {
+    id: users.length ? Math.max(...users.map(u => u.id)) + 1 : 1,
+    name,
+    email,
+    password,
+    role: role || "operator",
+  };
+
+  users.push(newUser);
+  saveData(USERS_FILE, users);
+
+  res.status(201).json({ ...newUser, password: undefined });
+});
+
+// Remover usuário
+app.delete('/users/:id', auth, (req, res) => {
+  const id = Number(req.params.id);
+  const index = users.findIndex(u => u.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Usuário não encontrado" });
+  }
+
+  const removed = users.splice(index, 1)[0];
+  saveData(USERS_FILE, users);
+
+  res.json({ ...removed, password: undefined });
+});
+
+// Atualizar usuário
+app.put('/users/:id', auth, (req, res) => {
+  const id = Number(req.params.id);
+  const user = users.find(u => u.id === id);
+
+  if (!user) {
+    return res.status(404).json({ error: "Usuário não encontrado" });
+  }
+
+  const { name, email, role, password } = req.body;
+
+  // Verifica se email já existe em outro usuário
+  if (email && users.some(u => u.email === email && u.id !== id)) {
+    return res.status(400).json({ error: "Email já está em uso por outro usuário" });
+  }
+
+  if (name !== undefined) user.name = name;
+  if (email !== undefined) user.email = email;
+  if (role !== undefined) user.role = role;
+
+  // Só atualiza senha se vier no body
+  if (password !== undefined && password !== "") {
+    user.password = password;
+  }
+
+  saveData(USERS_FILE, users);
 
   res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
 });
